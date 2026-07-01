@@ -35,7 +35,10 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(Quad_v2 src/main.cpp )
+add_executable(Quad_v2 
+    src/main.cpp
+    src/imu/mpu6xxx.cpp
+)
 
 pico_set_program_name(Quad_v2 "Quad_v2")
 pico_set_program_version(Quad_v2 "0.1")
