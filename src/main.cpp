@@ -50,17 +50,27 @@ int main()
     while (true)
     {
         GyroSample gyro{};
+        AccelSample accel{};
 
-        if (imu.read_gyro(gyro))
+        const bool gyro_ok = imu.read_gyro(gyro);
+        const bool accel_ok = imu.read_accel(accel);
+
+        if (gyro_ok && accel_ok)
         {
-            printf("Gyro X: %8.3f dps | Y: %8.3f dps | Z: %8.3f dps\n",
-                   gyro.x_dps,
-                   gyro.y_dps,
-                   gyro.z_dps);
+            printf("Gyro X:%8.3f Y:%8.3f Z:%8.3f dps | "
+                "Accel X:%7.3f Y:%7.3f Z:%7.3f g\n",
+                gyro.x_dps,
+                gyro.y_dps,
+                gyro.z_dps,
+                accel.x_g,
+                accel.y_g,
+                accel.z_g);
         }
         else
         {
-            printf("ERROR: Failed to read gyro.\n");
+            printf("ERROR: sensor read failed. gyro_ok=%d accel_ok=%d\n",
+                gyro_ok,
+                accel_ok);
         }
 
         sleep_ms(250);

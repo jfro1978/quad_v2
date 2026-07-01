@@ -11,14 +11,22 @@ struct GyroSample
     float z_dps;
 };
 
+struct AccelSample
+{
+    float x_g;
+    float y_g;
+    float z_g;
+};
+
 class Mpu6xxx
 {
 public:
     Mpu6xxx(i2c_inst_t* i2c, uint8_t address);
 
     bool initialise();
-    bool read_gyro(GyroSample& sample);
     void calibrate_gyro(uint16_t sample_count = 1000);
+    bool read_gyro(GyroSample& sample);    
+    bool read_accel(AccelSample& sample);
 
 private:
     bool write_register(uint8_t reg, uint8_t value);

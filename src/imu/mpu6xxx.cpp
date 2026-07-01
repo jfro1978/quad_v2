@@ -10,7 +10,10 @@ constexpr uint8_t WHO_AM_I     = 0x75;
 constexpr uint8_t PWR_MGMT_1   = 0x6B;
 constexpr uint8_t GYRO_CONFIG  = 0x1B;
 constexpr uint8_t GYRO_XOUT_H  = 0x43;
+constexpr uint8_t ACCEL_CONFIG = 0x1C;
+constexpr uint8_t ACCEL_XOUT_H = 0x3B;
 
+constexpr float ACCEL_LSB_PER_G_2G = 16384.0f;
 constexpr float GYRO_LSB_PER_DPS_250 = 131.0f;
 }
 
@@ -86,6 +89,13 @@ bool Mpu6xxx::initialise()
         return false;
     }
 
+    // Accelerometer range +/-2 g.
+    if (!write_register(ACCEL_CONFIG, 0x00))
+    {
+        printf("ERROR: Failed to configure accelerometer.\n");
+        return false;
+    }
+
     printf("MPU-6xxx initialised.\n");
     return true;
 }
@@ -107,6 +117,26 @@ bool Mpu6xxx::read_gyro(GyroSample& sample)
     sample.y_dps = (static_cast<float>(raw_y) / GYRO_LSB_PER_DPS_250) - gyro_y_offset_dps_;
     sample.z_dps = (static_cast<float>(raw_z) / GYRO_LSB_PER_DPS_250) - gyro_z_offset_dps_;
     
+    return true;
+}
+
+bool Mpu6xxx::read_accel(AccelSample& sample)
+{
+    uint8_t data[6] = {};
+
+    if (!read_registers(ACCEL_XOUT_H, data, sizeof(data)))
+    {
+        return false;
+    }
+
+    const int16_t raw_x = read_i16_be(&data[0]);
+    const int16_t raw_y = read_i16_be(&data[2]);
+    const int16_t raw_z = read_i16_be(&data[4]);
+
+    sample.x_g = static_cast<float>(raw_x) / ACCEL_LSB_PER_G_2G;
+    sample.y_g = static_cast<float>(raw_y) / ACCEL_LSB_PER_G_2G;
+    sample.z_g = static_cast<float>(raw_z) / ACCEL_LSB_PER_G_2G;
+
     return true;
 }
 
