@@ -20,6 +20,38 @@ Mpu6xxx::Mpu6xxx(i2c_inst_t* i2c, uint8_t address)
 {
 }
 
+void Mpu6xxx::calibrate_gyro(uint16_t sample_count)
+{
+    printf("Calibrating gyro. Keep IMU still...\n");
+
+    float sum_x = 0.0f;
+    float sum_y = 0.0f;
+    float sum_z = 0.0f;
+
+    for (uint16_t i = 0; i < sample_count; ++i)
+    {
+        GyroSample sample{};
+
+        if (read_gyro(sample))
+        {
+            sum_x += sample.x_dps;
+            sum_y += sample.y_dps;
+            sum_z += sample.z_dps;
+        }
+
+        sleep_ms(2);
+    }
+
+    gyro_x_offset_dps_ = sum_x / sample_count;
+    gyro_y_offset_dps_ = sum_y / sample_count;
+    gyro_z_offset_dps_ = sum_z / sample_count;
+
+    printf("Gyro offsets: X=%.3f, Y=%.3f, Z=%.3f dps\n",
+           gyro_x_offset_dps_,
+           gyro_y_offset_dps_,
+           gyro_z_offset_dps_);
+}
+
 bool Mpu6xxx::initialise()
 {
     uint8_t who = 0;
@@ -71,10 +103,10 @@ bool Mpu6xxx::read_gyro(GyroSample& sample)
     const int16_t raw_y = read_i16_be(&data[2]);
     const int16_t raw_z = read_i16_be(&data[4]);
 
-    sample.x_dps = static_cast<float>(raw_x) / GYRO_LSB_PER_DPS_250;
-    sample.y_dps = static_cast<float>(raw_y) / GYRO_LSB_PER_DPS_250;
-    sample.z_dps = static_cast<float>(raw_z) / GYRO_LSB_PER_DPS_250;
-
+    sample.x_dps = (static_cast<float>(raw_x) / GYRO_LSB_PER_DPS_250) - gyro_x_offset_dps_;
+    sample.y_dps = (static_cast<float>(raw_y) / GYRO_LSB_PER_DPS_250) - gyro_y_offset_dps_;
+    sample.z_dps = (static_cast<float>(raw_z) / GYRO_LSB_PER_DPS_250) - gyro_z_offset_dps_;
+    
     return true;
 }
 

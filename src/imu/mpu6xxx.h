@@ -18,11 +18,16 @@ public:
 
     bool initialise();
     bool read_gyro(GyroSample& sample);
+    void calibrate_gyro(uint16_t sample_count = 1000);
 
 private:
     bool write_register(uint8_t reg, uint8_t value);
     bool read_register(uint8_t reg, uint8_t& value);
     bool read_registers(uint8_t start_reg, uint8_t* buffer, uint8_t length);
+
+    float gyro_x_offset_dps_ = 0.0f;
+    float gyro_y_offset_dps_ = 0.0f;
+    float gyro_z_offset_dps_ = 0.0f;
 
     static int16_t read_i16_be(const uint8_t* data);
 

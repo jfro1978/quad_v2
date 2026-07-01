@@ -45,6 +45,8 @@ int main()
         }
     }
 
+    imu.calibrate_gyro();
+
     while (true)
     {
         GyroSample gyro{};
