@@ -4,6 +4,7 @@
 #include "hardware/i2c.h"
 
 #include "imu/mpu6xxx.h"
+#include "attitude/complementary_filter.h"
 
 namespace
 {
@@ -47,6 +48,10 @@ int main()
 
     imu.calibrate_gyro();
 
+    ComplementaryFilter attitude_filter(0.98f);
+
+    absolute_time_t previous_time = get_absolute_time();
+
     while (true)
     {
         GyroSample gyro{};
@@ -55,10 +60,21 @@ int main()
         const bool gyro_ok = imu.read_gyro(gyro);
         const bool accel_ok = imu.read_accel(accel);
 
+        absolute_time_t now = get_absolute_time();
+        const float dt_seconds =
+        absolute_time_diff_us(previous_time, now) / 1000000.0f;
+        previous_time = now;
+
         if (gyro_ok && accel_ok)
         {
-            printf("Gyro X:%8.3f Y:%8.3f Z:%8.3f dps | "
+            const AttitudeEstimate attitude =
+                attitude_filter.update(gyro, accel, dt_seconds);
+
+            printf("Pitch:%8.3f deg | Roll:%8.3f deg | "
+                "Gyro X:%8.3f Y:%8.3f Z:%8.3f dps | "
                 "Accel X:%7.3f Y:%7.3f Z:%7.3f g\n",
+                attitude.pitch_deg,
+                attitude.roll_deg,
                 gyro.x_dps,
                 gyro.y_dps,
                 gyro.z_dps,
@@ -73,6 +89,6 @@ int main()
                 accel_ok);
         }
 
-        sleep_ms(250);
+        sleep_ms(20);
     }
 }

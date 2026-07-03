@@ -38,6 +38,7 @@ pico_sdk_init()
 add_executable(Quad_v2 
     src/main.cpp
     src/imu/mpu6xxx.cpp
+    src/attitude/complementary_filter.cpp
 )
 
 pico_set_program_name(Quad_v2 "Quad_v2")
