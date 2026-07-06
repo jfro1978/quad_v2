@@ -5,25 +5,27 @@
 
 #include "imu/mpu6xxx.h"
 #include "attitude/complementary_filter.h"
+#include "receiver/receiver.h"
 
 namespace
 {
-constexpr i2c_inst_t* I2C_PORT = i2c0;
-constexpr uint I2C_SDA_PIN = 4;
-constexpr uint I2C_SCL_PIN = 5;
-constexpr uint I2C_BAUDRATE_HZ = 100000;
-constexpr uint8_t IMU_ADDRESS = 0x68;
+    constexpr i2c_inst_t* I2C_PORT = i2c0;
+    constexpr uint I2C_SDA_PIN = 4;
+    constexpr uint I2C_SCL_PIN = 5;
+    constexpr uint I2C_BAUDRATE_HZ = 100000;
+    constexpr uint8_t IMU_ADDRESS = 0x68;
+    constexpr uint RECEIVER_CH1_PIN = 6;
 
-void initialise_i2c()
-{
-    i2c_init(I2C_PORT, I2C_BAUDRATE_HZ);
+    void initialise_i2c()
+    {
+        i2c_init(I2C_PORT, I2C_BAUDRATE_HZ);
 
-    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
+        gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
+        gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
 
-    gpio_pull_up(I2C_SDA_PIN);
-    gpio_pull_up(I2C_SCL_PIN);
-}
+        gpio_pull_up(I2C_SDA_PIN);
+        gpio_pull_up(I2C_SCL_PIN);
+    }
 }
 
 int main()
@@ -48,6 +50,11 @@ int main()
 
     imu.calibrate_gyro();
 
+    Receiver receiver_ch1(RECEIVER_CH1_PIN);
+    receiver_ch1.initialise();
+
+    printf("Receiver CH1 on GP%u\n", RECEIVER_CH1_PIN);
+
     ComplementaryFilter attitude_filter(0.98f);
 
     absolute_time_t previous_time = get_absolute_time();
@@ -59,6 +66,9 @@ int main()
 
         const bool gyro_ok = imu.read_gyro(gyro);
         const bool accel_ok = imu.read_accel(accel);
+
+        const uint16_t ch1_us = receiver_ch1.pulse_width_us();
+        const bool ch1_valid = receiver_ch1.signal_valid();
 
         absolute_time_t now = get_absolute_time();
         const float dt_seconds =
@@ -72,7 +82,8 @@ int main()
 
             printf("Pitch:%8.3f deg | Roll:%8.3f deg | "
                 "Gyro X:%8.3f Y:%8.3f Z:%8.3f dps | "
-                "Accel X:%7.3f Y:%7.3f Z:%7.3f g\n",
+                "Accel X:%7.3f Y:%7.3f Z:%7.3f g | "
+                "CH1:%4u us valid=%d\n",
                 attitude.pitch_deg,
                 attitude.roll_deg,
                 gyro.x_dps,
@@ -80,7 +91,10 @@ int main()
                 gyro.z_dps,
                 accel.x_g,
                 accel.y_g,
-                accel.z_g);
+                accel.z_g,
+                ch1_us,
+                ch1_valid
+            );
         }
         else
         {

@@ -39,6 +39,7 @@ add_executable(Quad_v2
     src/main.cpp
     src/imu/mpu6xxx.cpp
     src/attitude/complementary_filter.cpp
+    src/receiver/receiver.cpp
 )
 
 pico_set_program_name(Quad_v2 "Quad_v2")
@@ -51,7 +52,8 @@ pico_enable_stdio_usb(Quad_v2 1)
 # Add the standard library to the build
 target_link_libraries(Quad_v2
         pico_stdlib
-        hardware_i2c)
+        hardware_i2c
+        hardware_gpio)
 
 # Add the standard include files to the build
 target_include_directories(Quad_v2 PRIVATE
