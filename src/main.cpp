@@ -6,6 +6,7 @@
 #include "imu/mpu6xxx.h"
 #include "attitude/complementary_filter.h"
 #include "receiver/receiver.h"
+#include "esc/esc.h"
 
 namespace
 {
@@ -13,11 +14,18 @@ namespace
     constexpr uint I2C_SDA_PIN = 4;
     constexpr uint I2C_SCL_PIN = 5;
     constexpr uint I2C_BAUDRATE_HZ = 100000;
+
     constexpr uint8_t IMU_ADDRESS = 0x68;
+
     constexpr uint RECEIVER_CH1_PIN = 6;
     constexpr uint RECEIVER_CH2_PIN = 7;
     constexpr uint RECEIVER_CH3_PIN = 8;
     constexpr uint RECEIVER_CH4_PIN = 9;
+
+    constexpr uint ESC1_PIN = 10;
+    constexpr uint ESC2_PIN = 11;
+    constexpr uint ESC3_PIN = 12;
+    constexpr uint ESC4_PIN = 13;
 
     void initialise_i2c()
     {
@@ -61,7 +69,8 @@ int main()
     );
     receiver.initialise();
 
-    printf("Receiver CH1 on GP%u\n", RECEIVER_CH1_PIN);
+    EscDriver escs(ESC1_PIN, ESC2_PIN, ESC3_PIN, ESC4_PIN);
+    escs.initialise();
 
     ComplementaryFilter attitude_filter(0.98f);
 
@@ -82,6 +91,8 @@ int main()
 
         if (gyro_ok && accel_ok)
         {
+            escs.write_all_min();
+
             const AttitudeEstimate attitude =
                 attitude_filter.update(gyro, accel, dt_seconds);
 
