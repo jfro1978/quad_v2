@@ -15,6 +15,9 @@ namespace
     constexpr uint I2C_BAUDRATE_HZ = 100000;
     constexpr uint8_t IMU_ADDRESS = 0x68;
     constexpr uint RECEIVER_CH1_PIN = 6;
+    constexpr uint RECEIVER_CH2_PIN = 7;
+    constexpr uint RECEIVER_CH3_PIN = 8;
+    constexpr uint RECEIVER_CH4_PIN = 9;
 
     void initialise_i2c()
     {
@@ -50,8 +53,13 @@ int main()
 
     imu.calibrate_gyro();
 
-    Receiver receiver_ch1(RECEIVER_CH1_PIN);
-    receiver_ch1.initialise();
+    Receiver receiver(
+        RECEIVER_CH1_PIN,
+        RECEIVER_CH2_PIN,
+        RECEIVER_CH3_PIN,
+        RECEIVER_CH4_PIN
+    );
+    receiver.initialise();
 
     printf("Receiver CH1 on GP%u\n", RECEIVER_CH1_PIN);
 
@@ -67,9 +75,6 @@ int main()
         const bool gyro_ok = imu.read_gyro(gyro);
         const bool accel_ok = imu.read_accel(accel);
 
-        const uint16_t ch1_us = receiver_ch1.pulse_width_us();
-        const bool ch1_valid = receiver_ch1.signal_valid();
-
         absolute_time_t now = get_absolute_time();
         const float dt_seconds =
         absolute_time_diff_us(previous_time, now) / 1000000.0f;
@@ -80,21 +85,14 @@ int main()
             const AttitudeEstimate attitude =
                 attitude_filter.update(gyro, accel, dt_seconds);
 
-            printf("Pitch:%8.3f deg | Roll:%8.3f deg | "
-                "Gyro X:%8.3f Y:%8.3f Z:%8.3f dps | "
-                "Accel X:%7.3f Y:%7.3f Z:%7.3f g | "
-                "CH1:%4u us valid=%d\n",
-                attitude.pitch_deg,
-                attitude.roll_deg,
-                gyro.x_dps,
-                gyro.y_dps,
-                gyro.z_dps,
-                accel.x_g,
-                accel.y_g,
-                accel.z_g,
-                ch1_us,
-                ch1_valid
+            printf("CH1:%4u CH2:%4u CH3:%4u CH4:%4u valid=%d\n",
+                receiver.ch1(),
+                receiver.ch2(),
+                receiver.ch3(),
+                receiver.ch4(),
+                receiver.all_channels_valid()
             );
+            
         }
         else
         {

@@ -6,15 +6,37 @@
 class Receiver
 {
 public:
-    explicit Receiver(uint32_t gpio_pin);
+    Receiver(uint ch1_pin,
+             uint ch2_pin,
+             uint ch3_pin,
+             uint ch4_pin);
 
     void initialise();
 
-    uint16_t pulse_width_us() const;
-    bool signal_valid() const;
+    uint16_t ch1() const;
+    uint16_t ch2() const;
+    uint16_t ch3() const;
+    uint16_t ch4() const;
+
+    bool ch1_valid() const;
+    bool ch2_valid() const;
+    bool ch3_valid() const;
+    bool ch4_valid() const;
+
+    bool all_channels_valid() const;
 
 private:
     static void gpio_callback(uint gpio, uint32_t events);
 
-    uint32_t gpio_pin_;
+    int channel_from_gpio(uint gpio) const;
+
+    static Receiver* instance_;
+
+    uint pins_[4];
+
+    volatile uint32_t rise_time_us_[4];
+    volatile uint16_t pulse_width_us_[4];
+    volatile bool valid_[4];
+
+    
 };
