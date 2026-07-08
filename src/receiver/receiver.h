@@ -13,10 +13,10 @@ public:
 
     void initialise();
 
-    uint16_t ch1() const;
-    uint16_t ch2() const;
-    uint16_t ch3() const;
-    uint16_t ch4() const;
+    uint16_t roll() const; 
+    uint16_t pitch() const; 
+    uint16_t throttle() const; 
+    uint16_t yaw() const; 
 
     bool ch1_valid() const;
     bool ch2_valid() const;

@@ -43,10 +43,10 @@ void Receiver::initialise()
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
-uint16_t Receiver::ch1() const { return pulse_width_us_[0]; }
-uint16_t Receiver::ch2() const { return pulse_width_us_[1]; }
-uint16_t Receiver::ch3() const { return pulse_width_us_[2]; }
-uint16_t Receiver::ch4() const { return pulse_width_us_[3]; }
+uint16_t Receiver::roll() const { return pulse_width_us_[0]; }
+uint16_t Receiver::pitch() const { return pulse_width_us_[1]; }
+uint16_t Receiver::throttle() const { return pulse_width_us_[2]; }
+uint16_t Receiver::yaw() const { return pulse_width_us_[3]; }
 
 bool Receiver::ch1_valid() const { return valid_[0]; }
 bool Receiver::ch2_valid() const { return valid_[1]; }

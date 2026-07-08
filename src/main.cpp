@@ -86,10 +86,10 @@ int main()
                 attitude_filter.update(gyro, accel, dt_seconds);
 
             printf("CH1:%4u CH2:%4u CH3:%4u CH4:%4u valid=%d\n",
-                receiver.ch1(),
-                receiver.ch2(),
-                receiver.ch3(),
-                receiver.ch4(),
+                receiver.roll(),
+                receiver.pitch(),
+                receiver.throttle(),
+                receiver.yaw(),
                 receiver.all_channels_valid()
             );
             
