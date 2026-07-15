@@ -77,3 +77,13 @@ void EscDriver::write_pin_us(uint pin, uint16_t pulse_us)
 
     pwm_set_gpio_level(pin, pulse_us);
 }
+
+void EscDriver::write_motor_us(uint motor_index, uint16_t pulse_us)
+{
+    if (motor_index >= 4)
+    {
+        return;
+    }
+
+    write_pin_us(pins_[motor_index], pulse_us);
+}

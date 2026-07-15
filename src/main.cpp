@@ -27,6 +27,11 @@ namespace
     constexpr uint ESC3_PIN = 12;
     constexpr uint ESC4_PIN = 13;
 
+    constexpr uint16_t RECEIVER_MIN_US = 1000;
+    constexpr uint16_t RECEIVER_MAX_US = 2000;
+    constexpr uint16_t MOTOR_TEST_MAX_US = 1200;
+
+
     void initialise_i2c()
     {
         i2c_init(I2C_PORT, I2C_BAUDRATE_HZ);
@@ -72,48 +77,33 @@ int main()
     EscDriver escs(ESC1_PIN, ESC2_PIN, ESC3_PIN, ESC4_PIN);
     escs.initialise();
 
+    escs.write_all_min();
+    sleep_ms(3000);
+
     ComplementaryFilter attitude_filter(0.98f);
 
     absolute_time_t previous_time = get_absolute_time();
 
     while (true)
     {
-/* 
-        GyroSample gyro{};
-        AccelSample accel{};
+        const uint16_t throttle_us = receiver.throttle();
 
-        const bool gyro_ok = imu.read_gyro(gyro);
-        const bool accel_ok = imu.read_accel(accel);
-
-        absolute_time_t now = get_absolute_time();
-        const float dt_seconds =
-        absolute_time_diff_us(previous_time, now) / 1000000.0f;
-        previous_time = now;
-
-        if (gyro_ok && accel_ok)
+        if (receiver.ch3_valid())
         {
-            escs.write_all_min();
+            uint16_t motor_command_us = throttle_us;
 
-            const AttitudeEstimate attitude =
-                attitude_filter.update(gyro, accel, dt_seconds);
+            if (motor_command_us < RECEIVER_MIN_US)
+            {
+                motor_command_us = RECEIVER_MIN_US;
+            }
 
-            printf("CH1:%4u CH2:%4u CH3:%4u CH4:%4u valid=%d\n",
-                receiver.roll(),
-                receiver.pitch(),
-                receiver.throttle(),
-                receiver.yaw(),
-                receiver.all_channels_valid()
-            );
-            
+            if (motor_command_us > MOTOR_TEST_MAX_US)
+            {
+                motor_command_us = MOTOR_TEST_MAX_US;
+            }
+
+            escs.write_motor_us(0, motor_command_us);
         }
-        else
-        {
-            printf("ERROR: sensor read failed. gyro_ok=%d accel_ok=%d\n",
-                gyro_ok,
-                accel_ok);
-        }
-*/
-        escs.write_all_min();
 
         sleep_ms(20);
     }
