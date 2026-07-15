@@ -2,16 +2,16 @@
 
 #include "hardware/pwm.h"
 #include "hardware/gpio.h"
+#include "hardware/clocks.h"
 
 namespace
 {
 constexpr uint16_t ESC_MIN_US = 1000;
 constexpr uint16_t ESC_MAX_US = 2000;
 
-// 50 Hz servo/ESC-style PWM.
-// Period = 20 ms = 20000 us.
-constexpr float PWM_CLK_DIV = 125.0f;
-constexpr uint16_t PWM_WRAP = 20000;
+constexpr uint32_t PWM_COUNTER_FREQUENCY_HZ = 1'000'000;
+constexpr uint16_t PWM_PERIOD_US = 20'000;
+constexpr uint16_t PWM_WRAP = PWM_PERIOD_US - 1;
 }
 
 EscDriver::EscDriver(uint esc1_pin, uint esc2_pin, uint esc3_pin, uint esc4_pin)
@@ -31,12 +31,17 @@ void EscDriver::initialise()
 
 void EscDriver::configure_pin(uint pin)
 {
-    gpio_set_function(pin, GPIO_FUNC_PWM);
+     gpio_set_function(pin, GPIO_FUNC_PWM);
 
     const uint slice = pwm_gpio_to_slice_num(pin);
 
+    const uint32_t system_clock_hz = clock_get_hz(clk_sys);
+    const float clock_divider =
+        static_cast<float>(system_clock_hz) /
+        static_cast<float>(PWM_COUNTER_FREQUENCY_HZ);
+
     pwm_config config = pwm_get_default_config();
-    pwm_config_set_clkdiv(&config, PWM_CLK_DIV);
+    pwm_config_set_clkdiv(&config, clock_divider);
     pwm_config_set_wrap(&config, PWM_WRAP);
 
     pwm_init(slice, &config, true);

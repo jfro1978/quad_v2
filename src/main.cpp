@@ -78,6 +78,7 @@ int main()
 
     while (true)
     {
+/* 
         GyroSample gyro{};
         AccelSample accel{};
 
@@ -111,6 +112,8 @@ int main()
                 gyro_ok,
                 accel_ok);
         }
+*/
+        escs.write_all_min();
 
         sleep_ms(20);
     }
