@@ -7,6 +7,7 @@
 #include "attitude/complementary_filter.h"
 #include "receiver/receiver.h"
 #include "esc/esc.h"
+#include "mixer/motor_mixer.h"
 
 namespace
 {
@@ -30,6 +31,16 @@ namespace
     constexpr uint16_t RECEIVER_MIN_US = 1000;
     constexpr uint16_t RECEIVER_MAX_US = 2000;
     constexpr uint16_t MOTOR_TEST_MAX_US = 1200;
+
+    constexpr uint16_t MOTOR_MIN_US = 1000;
+    constexpr uint16_t MOTOR_MAX_US = 2000;
+
+    constexpr float TEST_PITCH_CORRECTION_US = 0.0f;
+    constexpr float TEST_ROLL_CORRECTION_US  = 100.0f;
+    constexpr float TEST_YAW_CORRECTION_US   = 0.0f;
+
+    constexpr uint16_t TEST_THROTTLE_US = 1400;
+
 
 
     void initialise_i2c()
@@ -80,46 +91,30 @@ int main()
     escs.write_all_min();
     sleep_ms(3000);
 
+    MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US);
+
     ComplementaryFilter attitude_filter(0.98f);
 
     absolute_time_t previous_time = get_absolute_time();
 
     while (true)
     {
-        const uint16_t throttle_us = receiver.throttle();
+        const MotorCommands motors =
+            mixer.mix(
+                TEST_THROTTLE_US,
+                TEST_PITCH_CORRECTION_US,
+                TEST_ROLL_CORRECTION_US,
+                TEST_YAW_CORRECTION_US
+            );
 
-        printf("Throttle: %u us\n",
-        static_cast<unsigned>(throttle_us));
+        printf(
+            "FL:%u FR:%u RR:%u RL:%u\n",
+            static_cast<unsigned>(motors.front_left_us),
+            static_cast<unsigned>(motors.front_right_us),
+            static_cast<unsigned>(motors.rear_right_us),
+            static_cast<unsigned>(motors.rear_left_us)
+        );
 
-        if (receiver.ch3_valid())
-        {
-            uint16_t motor_command_us = throttle_us;
-
-            if (motor_command_us < RECEIVER_MIN_US)
-            {
-                motor_command_us = RECEIVER_MIN_US;
-            }
-
-            if (motor_command_us > MOTOR_TEST_MAX_US)
-            {
-                motor_command_us = MOTOR_TEST_MAX_US;
-            }
-
-            escs.write_motor_us(0, motor_command_us);
-
-            escs.write_motor_us(1, motor_command_us);
-            escs.write_motor_us(2, motor_command_us);
-            escs.write_motor_us(3, motor_command_us);
-
-            printf("Motor 1 command: %u us\n",
-            static_cast<unsigned>(motor_command_us));
-        }
-        else
-        {
-            escs.write_all_min();
-            printf("Throttle signal invalid; motors held at minimum.\n");
-        }
-
-        sleep_ms(20);
+        sleep_ms(250);
     }
 }

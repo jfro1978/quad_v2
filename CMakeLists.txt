@@ -41,6 +41,7 @@ add_executable(Quad_v2
     src/attitude/complementary_filter.cpp
     src/receiver/receiver.cpp
     src/esc/esc.cpp
+    src/mixer/motor_mixer.cpp
 )
 
 pico_set_program_name(Quad_v2 "Quad_v2")
