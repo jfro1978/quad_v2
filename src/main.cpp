@@ -47,7 +47,7 @@ namespace
 int main()
 {
     stdio_init_all();
-    sleep_ms(10000);
+    sleep_ms(5000);
 
     printf("\nPiQuad MPU-6xxx gyro test\n");
 
@@ -88,6 +88,9 @@ int main()
     {
         const uint16_t throttle_us = receiver.throttle();
 
+        printf("Throttle: %u us\n",
+        static_cast<unsigned>(throttle_us));
+
         if (receiver.ch3_valid())
         {
             uint16_t motor_command_us = throttle_us;
@@ -103,6 +106,18 @@ int main()
             }
 
             escs.write_motor_us(0, motor_command_us);
+
+            escs.write_motor_us(1, motor_command_us);
+            escs.write_motor_us(2, motor_command_us);
+            escs.write_motor_us(3, motor_command_us);
+
+            printf("Motor 1 command: %u us\n",
+            static_cast<unsigned>(motor_command_us));
+        }
+        else
+        {
+            escs.write_all_min();
+            printf("Throttle signal invalid; motors held at minimum.\n");
         }
 
         sleep_ms(20);
