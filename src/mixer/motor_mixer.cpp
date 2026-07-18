@@ -36,25 +36,25 @@ MotorCommands MotorMixer::mix(
 
     const float front_left =
         throttle
-        - pitch_correction_us
+        + pitch_correction_us
         + roll_correction_us
         - yaw_correction_us;
 
     const float front_right =
         throttle
-        - pitch_correction_us
+        + pitch_correction_us
         - roll_correction_us
         + yaw_correction_us;
 
     const float rear_right =
         throttle
-        + pitch_correction_us
+        - pitch_correction_us
         - roll_correction_us
         - yaw_correction_us;
 
     const float rear_left =
         throttle
-        + pitch_correction_us
+        - pitch_correction_us
         + roll_correction_us
         + yaw_correction_us;
 
