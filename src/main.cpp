@@ -8,6 +8,7 @@
 #include "receiver/receiver.h"
 #include "esc/esc.h"
 #include "mixer/motor_mixer.h"
+#include "control/pid_controller.h"
 
 namespace
 {
@@ -41,7 +42,21 @@ namespace
 
     constexpr uint16_t TEST_THROTTLE_US = 1400;
 
+    constexpr PidController::Gains TEST_PID_GAINS{
+        .proportional = 2.0f,
+        .integral = 0.0f,
+        .derivative = 0.0f
+    };
 
+    constexpr float PID_OUTPUT_MIN = -200.0f;
+    constexpr float PID_OUTPUT_MAX = 200.0f;
+
+    constexpr float PID_INTEGRAL_MIN = -100.0f;
+    constexpr float PID_INTEGRAL_MAX = 100.0f;
+
+    constexpr float TEST_SETPOINT = 0.0f;
+    constexpr float TEST_MEASUREMENT = -10.0f;
+    constexpr float TEST_DELTA_TIME_SECONDS = 0.004f;
 
     void initialise_i2c()
     {
@@ -93,27 +108,33 @@ int main()
 
     MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US);
 
+    PidController test_pid(
+        TEST_PID_GAINS,
+        PID_OUTPUT_MIN,
+        PID_OUTPUT_MAX,
+        PID_INTEGRAL_MIN,
+        PID_INTEGRAL_MAX
+    );
+
     ComplementaryFilter attitude_filter(0.98f);
 
     absolute_time_t previous_time = get_absolute_time();
 
     while (true)
     {
-        const MotorCommands motors =
-            mixer.mix(
-                TEST_THROTTLE_US,
-                TEST_PITCH_CORRECTION_US,
-                TEST_ROLL_CORRECTION_US,
-                TEST_YAW_CORRECTION_US
-            );
+        const float correction_us =
+            test_pid.update(
+                TEST_SETPOINT,
+                TEST_MEASUREMENT,
+                TEST_DELTA_TIME_SECONDS);
 
         printf(
-            "FL:%u FR:%u RR:%u RL:%u\n",
-            static_cast<unsigned>(motors.front_left_us),
-            static_cast<unsigned>(motors.front_right_us),
-            static_cast<unsigned>(motors.rear_right_us),
-            static_cast<unsigned>(motors.rear_left_us)
-        );
+            "Setpoint: %.2f, measurement: %.2f, correction: %.2f us\n",
+            static_cast<double>(TEST_SETPOINT),
+            static_cast<double>(TEST_MEASUREMENT),
+            static_cast<double>(correction_us));
+
+        escs.write_all_min();
 
         sleep_ms(250);
     }

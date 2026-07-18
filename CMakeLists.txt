@@ -42,6 +42,7 @@ add_executable(Quad_v2
     src/receiver/receiver.cpp
     src/esc/esc.cpp
     src/mixer/motor_mixer.cpp
+    src/control/pid_controller.cpp
 )
 
 pico_set_program_name(Quad_v2 "Quad_v2")
