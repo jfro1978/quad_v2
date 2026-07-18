@@ -140,6 +140,60 @@ bool Mpu6xxx::read_accel(AccelSample& sample)
     return true;
 }
 
+bool Mpu6xxx::read(ImuSample& sample)
+{
+    constexpr uint8_t IMU_DATA_LENGTH = 14;
+
+    uint8_t data[IMU_DATA_LENGTH] = {};
+
+    if (!read_registers(
+            ACCEL_XOUT_H,
+            data,
+            IMU_DATA_LENGTH))
+    {
+        return false;
+    }
+
+    const int16_t raw_accel_x = read_i16_be(&data[0]);
+    const int16_t raw_accel_y = read_i16_be(&data[2]);
+    const int16_t raw_accel_z = read_i16_be(&data[4]);
+
+    // Bytes 6 and 7 contain the temperature reading.
+
+    const int16_t raw_gyro_x = read_i16_be(&data[8]);
+    const int16_t raw_gyro_y = read_i16_be(&data[10]);
+    const int16_t raw_gyro_z = read_i16_be(&data[12]);
+
+    sample.accel.x_g =
+        static_cast<float>(raw_accel_x) /
+        ACCEL_LSB_PER_G_2G;
+
+    sample.accel.y_g =
+        static_cast<float>(raw_accel_y) /
+        ACCEL_LSB_PER_G_2G;
+
+    sample.accel.z_g =
+        static_cast<float>(raw_accel_z) /
+        ACCEL_LSB_PER_G_2G;
+
+    sample.gyro.x_dps =
+        (static_cast<float>(raw_gyro_x) /
+         GYRO_LSB_PER_DPS_250)
+        - gyro_x_offset_dps_;
+
+    sample.gyro.y_dps =
+        (static_cast<float>(raw_gyro_y) /
+         GYRO_LSB_PER_DPS_250)
+        - gyro_y_offset_dps_;
+
+    sample.gyro.z_dps =
+        (static_cast<float>(raw_gyro_z) /
+         GYRO_LSB_PER_DPS_250)
+        - gyro_z_offset_dps_;
+
+    return true;
+}
+
 bool Mpu6xxx::write_register(uint8_t reg, uint8_t value)
 {
     const uint8_t data[2] = {reg, value};
