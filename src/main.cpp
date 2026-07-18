@@ -181,6 +181,17 @@ int main()
                     measured_pitch_degrees,
                     delta_time_seconds);
 
+            const MotorCommands motor_commands =
+                mixer.mix(
+                    TEST_THROTTLE_US,
+                    pitch_correction_us,
+                    roll_correction_us,
+                    TEST_YAW_CORRECTION_US);
+
+            /*
+            * Stage 1 safety:
+            * Calculate the motor commands, but do not send them to the motors.
+            */
             escs.write_all_min();
 
             ++print_counter;
@@ -190,9 +201,10 @@ int main()
                 print_counter = 0;
 
                 printf(
-                    "dt: %.4f ms | "
-                    "roll: %.2f deg, roll correction: %.2f us | "
-                    "pitch: %.2f deg, pitch correction: %.2f us\n",
+                    "dt: %.2f ms | "
+                    "roll: %.2f deg, correction: %.2f us | "
+                    "pitch: %.2f deg, correction: %.2f us | "
+                    "motors FL:%u FR:%u RR:%u RL:%u\n",
                     static_cast<double>(
                         delta_time_seconds * 1000.0f),
                     static_cast<double>(
@@ -202,7 +214,11 @@ int main()
                     static_cast<double>(
                         measured_pitch_degrees),
                     static_cast<double>(
-                        pitch_correction_us));
+                        pitch_correction_us),
+                    motor_commands.front_left_us,
+                    motor_commands.front_right_us,
+                    motor_commands.rear_right_us,
+                    motor_commands.rear_left_us);
             }
         }
 
