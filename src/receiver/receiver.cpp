@@ -26,6 +26,9 @@ void Receiver::initialise()
 {
     instance_ = this;
 
+    // Register the callback before enabling GPIO interrupts.
+    gpio_set_irq_callback(&Receiver::gpio_callback);
+
     for (uint i = 0; i < 4; ++i)
     {
         gpio_init(pins_[i]);
@@ -39,9 +42,9 @@ void Receiver::initialise()
         );
     }
 
-    gpio_set_irq_callback(&Receiver::gpio_callback);
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
+
 
 uint16_t Receiver::roll() const { return pulse_width_us_[0]; }
 uint16_t Receiver::pitch() const { return pulse_width_us_[1]; }

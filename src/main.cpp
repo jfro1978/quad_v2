@@ -25,10 +25,10 @@ namespace
     constexpr uint RECEIVER_CH3_PIN = 8;
     constexpr uint RECEIVER_CH4_PIN = 9;
 
-    constexpr uint ESC1_PIN = 10;
-    constexpr uint ESC2_PIN = 11;
-    constexpr uint ESC3_PIN = 12;
-    constexpr uint ESC4_PIN = 13;
+    constexpr uint ESC_FRONT_LEFT_PIN  = 10;
+    constexpr uint ESC_FRONT_RIGHT_PIN = 11;
+    constexpr uint ESC_REAR_RIGHT_PIN  = 12;
+    constexpr uint ESC_REAR_LEFT_PIN   = 13;
 
     constexpr uint16_t RECEIVER_MIN_US = 1000;
     constexpr uint16_t RECEIVER_MAX_US = 2000;
@@ -41,7 +41,7 @@ namespace
     constexpr float TEST_ROLL_CORRECTION_US  = 100.0f;
     constexpr float TEST_YAW_CORRECTION_US   = 0.0f;
 
-    constexpr uint16_t TEST_THROTTLE_US = 1400;
+    constexpr uint16_t TEST_THROTTLE_US = 1200;
 
      constexpr PidController::Gains ROLL_PID_GAINS{
         .proportional = 2.0f,
@@ -108,11 +108,18 @@ int main()
     );
     receiver.initialise();
 
-    EscDriver escs(ESC1_PIN, ESC2_PIN, ESC3_PIN, ESC4_PIN);
+    EscDriver escs(
+        ESC_FRONT_LEFT_PIN,
+        ESC_FRONT_RIGHT_PIN,
+        ESC_REAR_RIGHT_PIN,
+        ESC_REAR_LEFT_PIN
+    );
+
     escs.initialise();
 
     escs.write_all_min();
-    sleep_ms(3000);
+    printf("Apply LiPo battery power now.");
+    sleep_ms(10000);
 
     MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US);
 
@@ -136,8 +143,7 @@ int main()
     absolute_time_t next_loop_time =
     delayed_by_us(previous_loop_time, CONTROL_LOOP_PERIOD_US);
 
-    uint32_t print_counter = 0;
-
+#if 1
     while (true)
     {
         const absolute_time_t current_time = get_absolute_time();
@@ -192,34 +198,12 @@ int main()
             * Stage 1 safety:
             * Calculate the motor commands, but do not send them to the motors.
             */
-            escs.write_all_min();
+            escs.write_all_us(
+                motor_commands.front_left_us,
+                motor_commands.front_right_us,
+                motor_commands.rear_right_us,
+                motor_commands.rear_left_us);
 
-            ++print_counter;
-
-            if (print_counter >= 25)
-            {
-                print_counter = 0;
-
-                printf(
-                    "dt: %.2f ms | "
-                    "roll: %.2f deg, correction: %.2f us | "
-                    "pitch: %.2f deg, correction: %.2f us | "
-                    "motors FL:%u FR:%u RR:%u RL:%u\n",
-                    static_cast<double>(
-                        delta_time_seconds * 1000.0f),
-                    static_cast<double>(
-                        measured_roll_degrees),
-                    static_cast<double>(
-                        roll_correction_us),
-                    static_cast<double>(
-                        measured_pitch_degrees),
-                    static_cast<double>(
-                        pitch_correction_us),
-                    motor_commands.front_left_us,
-                    motor_commands.front_right_us,
-                    motor_commands.rear_right_us,
-                    motor_commands.rear_left_us);
-            }
         }
 
         sleep_until(next_loop_time);
@@ -228,6 +212,8 @@ int main()
             delayed_by_us(
                 next_loop_time,
                 CONTROL_LOOP_PERIOD_US);
+
     }
+#endif
 
 }

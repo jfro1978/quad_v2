@@ -21,21 +21,11 @@ EscDriver::EscDriver(uint esc1_pin, uint esc2_pin, uint esc3_pin, uint esc4_pin)
 
 void EscDriver::initialise()
 {
-    for (uint pin : pins_)
-    {
-        configure_pin(pin);
-    }
+    bool slice_configured[NUM_PWM_SLICES] = {};
 
-    write_all_min();
-}
+    const uint32_t system_clock_hz =
+        clock_get_hz(clk_sys);
 
-void EscDriver::configure_pin(uint pin)
-{
-     gpio_set_function(pin, GPIO_FUNC_PWM);
-
-    const uint slice = pwm_gpio_to_slice_num(pin);
-
-    const uint32_t system_clock_hz = clock_get_hz(clk_sys);
     const float clock_divider =
         static_cast<float>(system_clock_hz) /
         static_cast<float>(PWM_COUNTER_FREQUENCY_HZ);
@@ -44,8 +34,49 @@ void EscDriver::configure_pin(uint pin)
     pwm_config_set_clkdiv(&config, clock_divider);
     pwm_config_set_wrap(&config, PWM_WRAP);
 
-    pwm_init(slice, &config, true);
+    for (uint pin : pins_)
+    {
+        gpio_set_function(pin, GPIO_FUNC_PWM);
+
+        const uint slice =
+            pwm_gpio_to_slice_num(pin);
+
+        if (!slice_configured[slice])
+        {
+            pwm_init(slice, &config, true);
+            slice_configured[slice] = true;
+        }
+    }
+
+    write_all_min();
+
+    /*
+    for (uint pin : pins_)
+    {
+        configure_pin(pin);
+    }
+
+    write_all_min();
+    */
 }
+
+// void EscDriver::configure_pin(uint pin)
+// {
+//      gpio_set_function(pin, GPIO_FUNC_PWM);
+
+//     const uint slice = pwm_gpio_to_slice_num(pin);
+
+//     const uint32_t system_clock_hz = clock_get_hz(clk_sys);
+//     const float clock_divider =
+//         static_cast<float>(system_clock_hz) /
+//         static_cast<float>(PWM_COUNTER_FREQUENCY_HZ);
+
+//     pwm_config config = pwm_get_default_config();
+//     pwm_config_set_clkdiv(&config, clock_divider);
+//     pwm_config_set_wrap(&config, PWM_WRAP);
+
+//     pwm_init(slice, &config, true);
+// }
 
 void EscDriver::write_all_us(uint16_t esc1_us,
                              uint16_t esc2_us,

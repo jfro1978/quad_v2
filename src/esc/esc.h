@@ -20,7 +20,7 @@ public:
     void write_motor_us(uint motor_index, uint16_t pulse_us);
 
 private:
-    void configure_pin(uint pin);
+    //void configure_pin(uint pin);
     void write_pin_us(uint pin, uint16_t pulse_us);
 
     uint pins_[4];
