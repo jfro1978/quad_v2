@@ -50,6 +50,9 @@ namespace
     constexpr uint16_t DISARM_YAW_LEFT_MAX_US = 1100;
     constexpr int64_t ARM_HOLD_TIME_US = 1'000'000;
 
+    // Receiver centre deadband.
+    constexpr uint16_t YAW_DEADBAND_US = 10;
+
     constexpr PidController::Gains ROLL_PID_GAINS{
         .proportional = 2.0f,
         .integral = 0.0f,
@@ -62,6 +65,12 @@ namespace
         .derivative = 0.0f
     };
 
+    constexpr PidController::Gains YAW_PID_GAINS{
+        .proportional = 1.0f,
+        .integral = 0.0f,
+        .derivative = 0.0f
+    };
+
     constexpr float PID_OUTPUT_MIN_US = -200.0f;
     constexpr float PID_OUTPUT_MAX_US = 200.0f;
 
@@ -70,6 +79,9 @@ namespace
 
     constexpr float MAX_ROLL_ANGLE_DEG = 20.0f;
     constexpr float MAX_PITCH_ANGLE_DEG = 20.0f;
+    
+    // Maximum commanded yaw rotation rate.
+    constexpr float MAX_YAW_RATE_DPS = 90.0f;
 
     constexpr float RECEIVER_MID_US = 1500.0f;
     constexpr float RECEIVER_HALF_RANGE_US = 500.0f;
@@ -94,6 +106,25 @@ namespace
             (RECEIVER_MAX_US - RECEIVER_MID_US);
 
         return std::clamp(normalised, -1.0f, 1.0f) * max_angle_deg;
+    }
+
+    float receiver_to_yaw_rate(uint16_t pulse_us)
+    {
+        const float offset_us =
+            static_cast<float>(pulse_us) - RECEIVER_MID_US;
+
+        // Ignore small deviations around the receiver centre.
+        if (offset_us >= -static_cast<float>(YAW_DEADBAND_US) &&
+            offset_us <= static_cast<float>(YAW_DEADBAND_US))
+        {
+            return 0.0f;
+        }
+
+        const float normalised =
+            offset_us / RECEIVER_HALF_RANGE_US;
+
+        return std::clamp(normalised, -1.0f, 1.0f) *
+            MAX_YAW_RATE_DPS;
     }
 }
 
@@ -137,7 +168,7 @@ int main()
     escs.initialise();
 
     escs.write_all_min();
-    printf("Apply LiPo battery power now.");
+    printf("Apply LiPo battery power now.\n");
     sleep_ms(10000);
 
     MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US);
@@ -151,6 +182,13 @@ int main()
 
     PidController pitch_pid(
         PITCH_PID_GAINS,
+        PID_OUTPUT_MIN_US,
+        PID_OUTPUT_MAX_US,
+        PID_INTEGRAL_MIN,
+        PID_INTEGRAL_MAX);
+
+    PidController yaw_pid(
+        YAW_PID_GAINS,
         PID_OUTPUT_MIN_US,
         PID_OUTPUT_MAX_US,
         PID_INTEGRAL_MIN,
@@ -273,7 +311,7 @@ int main()
 
                     if (imu.read(imu_sample))
                     {
-                        // Estimate the quadcopter's current attitude.
+                        // Estimate the current roll and pitch angles.
                         const AttitudeEstimate attitude =
                             attitude_filter.update(
                                 imu_sample.gyro,
@@ -287,41 +325,70 @@ int main()
                         // 1500 us ->   0 degrees
                         // 2000 us -> +20 degrees
 
+                        // ----------------------------------------------------
+                        // Convert receiver inputs into target angles/rates.
+                        // ----------------------------------------------------
+
+                        // Desired roll angle.
                         const float target_roll_deg =
                             receiver_to_angle(
                                 roll_us,
                                 MAX_ROLL_ANGLE_DEG);
 
+                        // Desired pitch angle.
                         const float target_pitch_deg =
-                            -receiver_to_angle(
+                            receiver_to_angle(
                                 pitch_us,
                                 MAX_PITCH_ANGLE_DEG);
 
-                        // Calculate roll correction.
+                        // Desired yaw rotation rate.
+                        const float target_yaw_rate_dps =
+                            receiver_to_yaw_rate(yaw_us);
+
+                        // ----------------------------------------------------
+                        // Calculate PID corrections.
+                        // ----------------------------------------------------
+
+                        // Roll correction.
                         const float roll_correction_us =
                             roll_pid.update(
                                 target_roll_deg,
                                 attitude.roll_deg,
                                 delta_time_seconds);
 
-                        // Calculate pitch correction.
+                        // Pitch correction.
                         const float pitch_correction_us =
                             pitch_pid.update(
                                 target_pitch_deg,
                                 attitude.pitch_deg,
                                 delta_time_seconds);
 
-                        // Calculate the PWM command for each motor.
+                        // Yaw correction.
+                        //
+                        // Unlike roll and pitch, yaw uses the measured
+                        // angular velocity directly from the gyroscope.
+                        const float yaw_correction_us =
+                            yaw_pid.update(
+                                target_yaw_rate_dps,
+                                imu_sample.gyro.z_dps,
+                                delta_time_seconds);
+
+                        // ----------------------------------------------------
+                        // Calculate individual motor commands.
+                        // ----------------------------------------------------
+
                         const MotorCommands motor_commands =
                             mixer.mix(
                                 throttle_us,
                                 pitch_correction_us,
                                 roll_correction_us,
-                                TEST_YAW_CORRECTION_US);
+                                yaw_correction_us);
 
-                        // Keep all motors at minimum PWM when
-                        // the throttle is fully down.
-                        if (throttle_low)
+                        // ----------------------------------------------------
+                        // Apply motor commands.
+                        // ----------------------------------------------------
+
+                        if (throttle_us <= ARM_THROTTLE_MAX_US)
                         {
                             escs.write_all_min();
                         }
@@ -342,6 +409,10 @@ int main()
 
                         arm_start_time = nil_time;
                         disarm_start_time = nil_time;
+
+                        roll_pid.reset();
+                        pitch_pid.reset();
+                        yaw_pid.reset();
 
                         escs.write_all_min();
 
