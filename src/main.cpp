@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <algorithm>
 
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
@@ -67,8 +68,11 @@ namespace
     constexpr float PID_INTEGRAL_MIN = -100.0f;
     constexpr float PID_INTEGRAL_MAX = 100.0f;
 
-    constexpr float TEST_TARGET_ROLL_DEGREES = 0.0f;
-    constexpr float TEST_TARGET_PITCH_DEGREES = 0.0f;
+    constexpr float MAX_ROLL_ANGLE_DEG = 20.0f;
+    constexpr float MAX_PITCH_ANGLE_DEG = 20.0f;
+
+    constexpr float RECEIVER_MID_US = 1500.0f;
+    constexpr float RECEIVER_HALF_RANGE_US = 500.0f;
 
     constexpr int64_t CONTROL_LOOP_PERIOD_US = 4000;
 
@@ -81,6 +85,15 @@ namespace
 
         gpio_pull_up(I2C_SDA_PIN);
         gpio_pull_up(I2C_SCL_PIN);
+    }
+
+    float receiver_to_angle(uint16_t pulse_us, float max_angle_deg)
+    {
+        const float normalised =
+            (static_cast<float>(pulse_us) - RECEIVER_MID_US) /
+            (RECEIVER_MAX_US - RECEIVER_MID_US);
+
+        return std::clamp(normalised, -1.0f, 1.0f) * max_angle_deg;
     }
 }
 
@@ -153,9 +166,10 @@ int main()
 
     absolute_time_t arm_start_time = nil_time;
     absolute_time_t disarm_start_time = nil_time;
-#if 1
+
     while (true)
     {
+        // Calculate the elapsed time since the previous control-loop iteration.
         const absolute_time_t current_time = get_absolute_time();
 
         const int64_t elapsed_us =
@@ -166,14 +180,17 @@ int main()
         const float delta_time_seconds =
             static_cast<float>(elapsed_us) / 1'000'000.0f;
 
-        // Read receiver inputs.
+        // Read the transmitter inputs.
         const uint16_t throttle_us = receiver.throttle();
         const uint16_t yaw_us = receiver.yaw();
+        const uint16_t roll_us = receiver.roll();
+        const uint16_t pitch_us = receiver.pitch();
 
-        // This must include a receiver signal timeout.
+        // Check that all receiver channels are valid.
         if (!receiver.all_channels_valid())
         {
             armed = false;
+
             arm_start_time = nil_time;
             disarm_start_time = nil_time;
 
@@ -181,20 +198,23 @@ int main()
         }
         else
         {
+            // Determine whether the throttle is fully down.
             const bool throttle_low =
                 throttle_us <= ARM_THROTTLE_MAX_US;
 
+            // Arming: throttle down, yaw fully right.
             const bool arm_requested =
                 throttle_low &&
                 yaw_us >= ARM_YAW_RIGHT_MIN_US;
 
+            // Disarming: throttle down, yaw fully left.
             const bool disarm_requested =
                 throttle_low &&
                 yaw_us <= DISARM_YAW_LEFT_MAX_US;
 
-            // Handle arming.
             if (!armed)
             {
+                // Keep the motors stopped while disarmed.
                 escs.write_all_min();
 
                 if (arm_requested)
@@ -210,6 +230,7 @@ int main()
                     {
                         armed = true;
                         arm_start_time = nil_time;
+
                         printf("ARMED\n");
                     }
                 }
@@ -220,7 +241,7 @@ int main()
             }
             else
             {
-                // Handle disarming.
+                // Check whether the operator is requesting disarming.
                 if (disarm_requested)
                 {
                     if (is_nil_time(disarm_start_time))
@@ -236,6 +257,7 @@ int main()
                         disarm_start_time = nil_time;
 
                         escs.write_all_min();
+
                         printf("DISARMED\n");
                     }
                 }
@@ -244,30 +266,52 @@ int main()
                     disarm_start_time = nil_time;
                 }
 
+                // Only calculate and apply motor commands while armed.
                 if (armed)
                 {
                     ImuSample imu_sample{};
 
                     if (imu.read(imu_sample))
                     {
+                        // Estimate the quadcopter's current attitude.
                         const AttitudeEstimate attitude =
                             attitude_filter.update(
                                 imu_sample.gyro,
                                 imu_sample.accel,
                                 delta_time_seconds);
 
+                        // Convert transmitter roll/pitch commands
+                        // into desired attitude angles.
+                        //
+                        // 1000 us -> -20 degrees
+                        // 1500 us ->   0 degrees
+                        // 2000 us -> +20 degrees
+
+                        const float target_roll_deg =
+                            receiver_to_angle(
+                                roll_us,
+                                MAX_ROLL_ANGLE_DEG);
+
+                        const float target_pitch_deg =
+                            -receiver_to_angle(
+                                pitch_us,
+                                MAX_PITCH_ANGLE_DEG);
+
+                        // Calculate roll correction.
                         const float roll_correction_us =
                             roll_pid.update(
-                                TEST_TARGET_ROLL_DEGREES,
+                                target_roll_deg,
                                 attitude.roll_deg,
                                 delta_time_seconds);
 
+                        // Calculate pitch correction.
                         const float pitch_correction_us =
                             pitch_pid.update(
-                                TEST_TARGET_PITCH_DEGREES,
+                                target_pitch_deg,
                                 attitude.pitch_deg,
                                 delta_time_seconds);
 
+                        // Calculate the PWM command for each motor.
                         const MotorCommands motor_commands =
                             mixer.mix(
                                 throttle_us,
@@ -275,8 +319,9 @@ int main()
                                 roll_correction_us,
                                 TEST_YAW_CORRECTION_US);
 
-                        // Keep all motors at minimum when throttle is fully down.
-                        if (throttle_us <= ARM_THROTTLE_MAX_US)
+                        // Keep all motors at minimum PWM when
+                        // the throttle is fully down.
+                        if (throttle_low)
                         {
                             escs.write_all_min();
                         }
@@ -291,15 +336,22 @@ int main()
                     }
                     else
                     {
-                        // Bench-test policy for IMU failure.
+                        // An IMU communication failure causes
+                        // the quadcopter to disarm.
                         armed = false;
+
+                        arm_start_time = nil_time;
+                        disarm_start_time = nil_time;
+
                         escs.write_all_min();
+
                         printf("IMU failure - DISARMED\n");
                     }
                 }
             }
         }
 
+        // Maintain the 250 Hz control-loop frequency.
         sleep_until(next_loop_time);
 
         next_loop_time =
@@ -307,6 +359,4 @@ int main()
                 next_loop_time,
                 CONTROL_LOOP_PERIOD_US);
     }
-#endif
-
 }
