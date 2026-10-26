@@ -43,7 +43,13 @@ namespace
 
     constexpr uint16_t TEST_THROTTLE_US = 1200;
 
-     constexpr PidController::Gains ROLL_PID_GAINS{
+    // Arming constants
+    constexpr uint16_t ARM_THROTTLE_MAX_US = 1050;
+    constexpr uint16_t ARM_YAW_RIGHT_MIN_US = 1900;
+    constexpr uint16_t DISARM_YAW_LEFT_MAX_US = 1100;
+    constexpr int64_t ARM_HOLD_TIME_US = 1'000'000;
+
+    constexpr PidController::Gains ROLL_PID_GAINS{
         .proportional = 2.0f,
         .integral = 0.0f,
         .derivative = 0.0f
@@ -81,7 +87,7 @@ namespace
 int main()
 {
     stdio_init_all();
-    sleep_ms(5000);
+    sleep_ms(10000);
 
     printf("\nPiQuad MPU-6xxx gyro test\n");
 
@@ -143,67 +149,155 @@ int main()
     absolute_time_t next_loop_time =
     delayed_by_us(previous_loop_time, CONTROL_LOOP_PERIOD_US);
 
+    bool armed = false;
+
+    absolute_time_t arm_start_time = nil_time;
+    absolute_time_t disarm_start_time = nil_time;
 #if 1
     while (true)
     {
         const absolute_time_t current_time = get_absolute_time();
 
         const int64_t elapsed_us =
-            absolute_time_diff_us(
-                previous_loop_time,
-                current_time);
+            absolute_time_diff_us(previous_loop_time, current_time);
 
         previous_loop_time = current_time;
 
         const float delta_time_seconds =
-            static_cast<float>(elapsed_us) /
-            1'000'000.0f;
+            static_cast<float>(elapsed_us) / 1'000'000.0f;
 
-        ImuSample imu_sample{};
+        // Read receiver inputs.
+        const uint16_t throttle_us = receiver.throttle();
+        const uint16_t yaw_us = receiver.yaw();
 
-        if (imu.read(imu_sample))
+        // This must include a receiver signal timeout.
+        if (!receiver.all_channels_valid())
         {
-            const AttitudeEstimate attitude =
-                attitude_filter.update(
-                    imu_sample.gyro,
-                    imu_sample.accel,
-                    delta_time_seconds);
+            armed = false;
+            arm_start_time = nil_time;
+            disarm_start_time = nil_time;
 
-            const float measured_roll_degrees =
-                attitude.roll_deg;
+            escs.write_all_min();
+        }
+        else
+        {
+            const bool throttle_low =
+                throttle_us <= ARM_THROTTLE_MAX_US;
 
-            const float measured_pitch_degrees =
-                attitude.pitch_deg;
+            const bool arm_requested =
+                throttle_low &&
+                yaw_us >= ARM_YAW_RIGHT_MIN_US;
 
-            const float roll_correction_us =
-                roll_pid.update(
-                    TEST_TARGET_ROLL_DEGREES,
-                    measured_roll_degrees,
-                    delta_time_seconds);
+            const bool disarm_requested =
+                throttle_low &&
+                yaw_us <= DISARM_YAW_LEFT_MAX_US;
 
-            const float pitch_correction_us =
-                pitch_pid.update(
-                    TEST_TARGET_PITCH_DEGREES,
-                    measured_pitch_degrees,
-                    delta_time_seconds);
+            // Handle arming.
+            if (!armed)
+            {
+                escs.write_all_min();
 
-            const MotorCommands motor_commands =
-                mixer.mix(
-                    TEST_THROTTLE_US,
-                    pitch_correction_us,
-                    roll_correction_us,
-                    TEST_YAW_CORRECTION_US);
+                if (arm_requested)
+                {
+                    if (is_nil_time(arm_start_time))
+                    {
+                        arm_start_time = current_time;
+                    }
+                    else if (
+                        absolute_time_diff_us(
+                            arm_start_time,
+                            current_time) >= ARM_HOLD_TIME_US)
+                    {
+                        armed = true;
+                        arm_start_time = nil_time;
+                        printf("ARMED\n");
+                    }
+                }
+                else
+                {
+                    arm_start_time = nil_time;
+                }
+            }
+            else
+            {
+                // Handle disarming.
+                if (disarm_requested)
+                {
+                    if (is_nil_time(disarm_start_time))
+                    {
+                        disarm_start_time = current_time;
+                    }
+                    else if (
+                        absolute_time_diff_us(
+                            disarm_start_time,
+                            current_time) >= ARM_HOLD_TIME_US)
+                    {
+                        armed = false;
+                        disarm_start_time = nil_time;
 
-            /*
-            * Stage 1 safety:
-            * Calculate the motor commands, but do not send them to the motors.
-            */
-            escs.write_all_us(
-                motor_commands.front_left_us,
-                motor_commands.front_right_us,
-                motor_commands.rear_right_us,
-                motor_commands.rear_left_us);
+                        escs.write_all_min();
+                        printf("DISARMED\n");
+                    }
+                }
+                else
+                {
+                    disarm_start_time = nil_time;
+                }
 
+                if (armed)
+                {
+                    ImuSample imu_sample{};
+
+                    if (imu.read(imu_sample))
+                    {
+                        const AttitudeEstimate attitude =
+                            attitude_filter.update(
+                                imu_sample.gyro,
+                                imu_sample.accel,
+                                delta_time_seconds);
+
+                        const float roll_correction_us =
+                            roll_pid.update(
+                                TEST_TARGET_ROLL_DEGREES,
+                                attitude.roll_deg,
+                                delta_time_seconds);
+
+                        const float pitch_correction_us =
+                            pitch_pid.update(
+                                TEST_TARGET_PITCH_DEGREES,
+                                attitude.pitch_deg,
+                                delta_time_seconds);
+
+                        const MotorCommands motor_commands =
+                            mixer.mix(
+                                throttle_us,
+                                pitch_correction_us,
+                                roll_correction_us,
+                                TEST_YAW_CORRECTION_US);
+
+                        // Keep all motors at minimum when throttle is fully down.
+                        if (throttle_us <= ARM_THROTTLE_MAX_US)
+                        {
+                            escs.write_all_min();
+                        }
+                        else
+                        {
+                            escs.write_all_us(
+                                motor_commands.front_left_us,
+                                motor_commands.front_right_us,
+                                motor_commands.rear_right_us,
+                                motor_commands.rear_left_us);
+                        }
+                    }
+                    else
+                    {
+                        // Bench-test policy for IMU failure.
+                        armed = false;
+                        escs.write_all_min();
+                        printf("IMU failure - DISARMED\n");
+                    }
+                }
+            }
         }
 
         sleep_until(next_loop_time);
@@ -212,7 +306,6 @@ int main()
             delayed_by_us(
                 next_loop_time,
                 CONTROL_LOOP_PERIOD_US);
-
     }
 #endif
 

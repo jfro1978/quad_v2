@@ -212,12 +212,37 @@ bool Mpu6xxx::read_register(uint8_t reg, uint8_t& value)
 
 bool Mpu6xxx::read_registers(uint8_t start_reg, uint8_t* buffer, uint8_t length)
 {
-    if (i2c_write_blocking(i2c_, address_, &start_reg, 1, true) != 1)
+    const int write_result = i2c_write_blocking(
+        i2c_,
+        address_,
+        &start_reg,
+        1,
+        true);
+
+    if (write_result != 1)
     {
+        printf("IMU I2C write failed: %d\n", write_result);
         return false;
     }
 
-    return i2c_read_blocking(i2c_, address_, buffer, length, false) == length;
+    const int read_result = i2c_read_blocking(
+        i2c_,
+        address_,
+        buffer,
+        length,
+        false);
+
+    if (read_result != length)
+    {
+        printf(
+            "IMU I2C read failed: expected %u, received %d\n",
+            static_cast<unsigned>(length),
+            read_result);
+
+        return false;
+    }
+
+    return true;
 }
 
 int16_t Mpu6xxx::read_i16_be(const uint8_t* data)
