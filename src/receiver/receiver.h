@@ -30,6 +30,8 @@ private:
 
     int channel_from_gpio(uint gpio) const;
 
+    bool channel_valid(uint8_t channel) const;
+
     static Receiver* instance_;
 
     uint pins_[4];
@@ -38,5 +40,9 @@ private:
     volatile uint16_t pulse_width_us_[4];
     volatile bool valid_[4];
 
-    
+    static constexpr uint32_t SIGNAL_TIMEOUT_US = 100'000;
+
+    // Timestamp of the most recent valid pulse for each channel.
+    // Zero indicates that no valid pulse has been received.
+    volatile uint32_t last_valid_pulse_us_[4] = {};
 };

@@ -51,14 +51,17 @@ uint16_t Receiver::pitch() const { return pulse_width_us_[1]; }
 uint16_t Receiver::throttle() const { return pulse_width_us_[2]; }
 uint16_t Receiver::yaw() const { return pulse_width_us_[3]; }
 
-bool Receiver::ch1_valid() const { return valid_[0]; }
-bool Receiver::ch2_valid() const { return valid_[1]; }
-bool Receiver::ch3_valid() const { return valid_[2]; }
-bool Receiver::ch4_valid() const { return valid_[3]; }
+bool Receiver::ch1_valid() const { return channel_valid(0); }
+bool Receiver::ch2_valid() const { return channel_valid(1); }
+bool Receiver::ch3_valid() const { return channel_valid(2); }
+bool Receiver::ch4_valid() const { return channel_valid(3); }
 
 bool Receiver::all_channels_valid() const
 {
-    return valid_[0] && valid_[1] && valid_[2] && valid_[3];
+    return ch1_valid() &&
+           ch2_valid() &&
+           ch3_valid() &&
+           ch4_valid();
 }
 
 int Receiver::channel_from_gpio(uint gpio) const
@@ -100,11 +103,50 @@ void Receiver::gpio_callback(uint gpio, uint32_t events)
         const uint32_t pulse_width =
             now_us - instance_->rise_time_us_[channel];
 
-        instance_->pulse_width_us_[channel] =
-            static_cast<uint16_t>(pulse_width);
-
-        instance_->valid_[channel] =
+        // Check whether the pulse width is valid.
+        const bool pulse_valid =
             pulse_width >= MIN_VALID_PULSE_US &&
             pulse_width <= MAX_VALID_PULSE_US;
+
+        instance_->valid_[channel] = pulse_valid;
+
+        if (pulse_valid)
+        {
+            // Store the measured pulse width.
+            instance_->pulse_width_us_[channel] =
+                static_cast<uint16_t>(pulse_width);
+
+            // Record the time at which this valid pulse was received.
+            instance_->last_valid_pulse_us_[channel] = now_us;
+        }
+    }
+}
+
+bool Receiver::channel_valid(uint8_t channel) const
+{
+    // Check whether the most recently received pulse was valid.
+    if (!valid_[channel])
+    {
+        return false;
+    }
+
+    // Read the timestamp of the last valid pulse.
+    const uint32_t last_pulse_us =
+        last_valid_pulse_us_[channel];
+
+    // No valid pulse has ever been received.
+    if (last_pulse_us == 0)
+    {
+        return false;
+    }
+
+    // Calculate how long ago the pulse was received.
+    const uint32_t elapsed_us =
+        time_us_32() - last_pulse_us;
+
+    // Check whether the signal has timed out.
+    if (elapsed_us > SIGNAL_TIMEOUT_US)
+    {
+        return false;
     }
 }
