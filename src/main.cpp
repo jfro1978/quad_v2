@@ -22,15 +22,21 @@ namespace
 
     constexpr uint8_t IMU_ADDRESS = 0x68;
 
+    // GPIO Inputs (Receiver)
     constexpr uint RECEIVER_CH1_PIN = 6;
     constexpr uint RECEIVER_CH2_PIN = 7;
     constexpr uint RECEIVER_CH3_PIN = 8;
     constexpr uint RECEIVER_CH4_PIN = 9;
 
+    // GPIO Outputs (ESCs / Motors)
     constexpr uint ESC_FRONT_LEFT_PIN  = 10;
     constexpr uint ESC_FRONT_RIGHT_PIN = 11;
     constexpr uint ESC_REAR_RIGHT_PIN  = 12;
     constexpr uint ESC_REAR_LEFT_PIN   = 13;
+
+    // GPIO Outputs (Status LEDs)
+    constexpr uint RED_LED_PIN = 14;
+    constexpr uint GREEN_LED_PIN = 15;
 
     constexpr uint16_t RECEIVER_MIN_US = 1000;
     constexpr uint16_t RECEIVER_MAX_US = 2000;
@@ -92,6 +98,19 @@ namespace
         ArmedIdle,
         ArmedActive
     };
+
+    void initialise_status_leds()
+    {
+        gpio_init(RED_LED_PIN);
+        gpio_set_dir(RED_LED_PIN, GPIO_OUT);
+
+        gpio_init(GREEN_LED_PIN);
+        gpio_set_dir(GREEN_LED_PIN, GPIO_OUT);
+
+        // Red indicates initialisation in progress.
+        gpio_put(RED_LED_PIN, true);
+        gpio_put(GREEN_LED_PIN, false);
+    }
 
     void initialise_i2c()
     {
@@ -160,6 +179,9 @@ namespace
 int main()
 {
     stdio_init_all();
+    
+    initialise_status_leds();
+    
     sleep_ms(10000);
 
     printf("\nPiQuad MPU-6xxx gyro test\n");
@@ -170,10 +192,15 @@ int main()
 
     if (!imu.initialise())
     {
+        gpio_put(GREEN_LED_PIN, false);
+
         while (true)
         {
-            printf("IMU init failed.\n");
-            sleep_ms(1000);
+            gpio_put(RED_LED_PIN, true);
+            sleep_ms(250);
+
+            gpio_put(RED_LED_PIN, false);
+            sleep_ms(250);
         }
     }
 
@@ -233,6 +260,10 @@ int main()
 
     absolute_time_t arm_start_time = nil_time;
     absolute_time_t disarm_start_time = nil_time;
+
+    // Flight Controller ready
+    gpio_put(RED_LED_PIN, false);
+    gpio_put(GREEN_LED_PIN, true);
 
     while (true)
     {
