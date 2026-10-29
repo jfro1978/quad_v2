@@ -40,14 +40,9 @@ namespace
     constexpr uint16_t MOTOR_MAX_US = 2000;
     constexpr uint16_t MOTOR_IDLE_US = 1100;
 
-    constexpr float TEST_PITCH_CORRECTION_US = 0.0f;
-    constexpr float TEST_ROLL_CORRECTION_US  = 100.0f;
-    constexpr float TEST_YAW_CORRECTION_US   = 0.0f;
-
-    constexpr uint16_t TEST_THROTTLE_US = 1200;
-
     // Arming constants
     constexpr uint16_t ARM_THROTTLE_MAX_US = 1050;
+    constexpr uint16_t ACTIVE_THROTTLE_MIN_US = 1070;
     constexpr uint16_t ARM_YAW_RIGHT_MIN_US = 1900;
     constexpr uint16_t DISARM_YAW_LEFT_MAX_US = 1100;
     constexpr int64_t ARM_HOLD_TIME_US = 1'000'000;
@@ -56,7 +51,7 @@ namespace
     constexpr uint16_t YAW_DEADBAND_US = 10;
 
     constexpr PidController::Gains ROLL_PID_GAINS{
-        .proportional = 2.0f,
+        .proportional = 8.0f,
         .integral = 0.0f,
         .derivative = 0.0f
     };
@@ -89,6 +84,13 @@ namespace
     constexpr float RECEIVER_HALF_RANGE_US = 500.0f;
 
     constexpr int64_t CONTROL_LOOP_PERIOD_US = 4000;
+
+    enum class FlightState
+    {
+        Disarmed,
+        ArmedIdle,
+        ArmedActive
+    };
 
     void initialise_i2c()
     {
@@ -226,7 +228,7 @@ int main()
     absolute_time_t next_loop_time =
     delayed_by_us(previous_loop_time, CONTROL_LOOP_PERIOD_US);
 
-    bool armed = false;
+    FlightState flight_state = FlightState::Disarmed;
 
     absolute_time_t arm_start_time = nil_time;
     absolute_time_t disarm_start_time = nil_time;
@@ -253,7 +255,7 @@ int main()
         // Check that all receiver channels are valid.
         if (!receiver.all_channels_valid())
         {
-            armed = false;
+            flight_state = FlightState::Disarmed;
 
             arm_start_time = nil_time;
             disarm_start_time = nil_time;
@@ -280,7 +282,33 @@ int main()
                 throttle_low &&
                 yaw_us <= DISARM_YAW_LEFT_MAX_US;
 
-            if (!armed)
+            // Determine whether to enter or leave active control.
+            // Hysteresis prevents rapid state changes near minimum throttle.
+
+            if (flight_state == FlightState::ArmedIdle &&
+                throttle_us > ACTIVE_THROTTLE_MIN_US)
+            {
+                flight_state = FlightState::ArmedActive;
+
+                roll_pid.reset();
+                pitch_pid.reset();
+                yaw_pid.reset();
+
+                printf("ARMED ACTIVE\n");
+            }
+            else if (flight_state == FlightState::ArmedActive &&
+                    throttle_us <= ARM_THROTTLE_MAX_US)
+            {
+                flight_state = FlightState::ArmedIdle;
+
+                roll_pid.reset();
+                pitch_pid.reset();
+                yaw_pid.reset();
+
+                printf("ARMED IDLE\n");
+            }
+
+            if (flight_state == FlightState::Disarmed)
             {
                 // Keep the motors stopped while disarmed.
                 escs.write_all_min();
@@ -296,7 +324,7 @@ int main()
                             arm_start_time,
                             current_time) >= ARM_HOLD_TIME_US)
                     {
-                        armed = true;
+                        flight_state = FlightState::ArmedIdle;
                         arm_start_time = nil_time;
 
                         roll_pid.reset();
@@ -325,7 +353,7 @@ int main()
                             disarm_start_time,
                             current_time) >= ARM_HOLD_TIME_US)
                     {
-                        armed = false;
+                        flight_state = FlightState::Disarmed;
                         disarm_start_time = nil_time;
 
                         roll_pid.reset();
@@ -343,7 +371,7 @@ int main()
                 }
 
                 // Only calculate and apply motor commands while armed.
-                if (armed)
+                if (flight_state != FlightState::Disarmed)
                 {
                     ImuSample imu_sample{};
 
@@ -356,88 +384,62 @@ int main()
                                 imu_sample.accel,
                                 delta_time_seconds);
 
-                        // Convert transmitter roll/pitch commands
-                        // into desired attitude angles.
-                        //
-                        // 1000 us -> -20 degrees
-                        // 1500 us ->   0 degrees
-                        // 2000 us -> +20 degrees
-
                         // ----------------------------------------------------
-                        // Convert receiver inputs into target angles/rates.
+                        // Determine the flight-control state.
                         // ----------------------------------------------------
 
-                        // Desired roll angle.
-                        const float target_roll_deg =
-                            receiver_to_angle(
-                                roll_us,
-                                MAX_ROLL_ANGLE_DEG);
-
-                        // Desired pitch angle.
-                        const float target_pitch_deg =
-                            receiver_to_angle(
-                                pitch_us,
-                                MAX_PITCH_ANGLE_DEG);
-
-                        // Desired yaw rotation rate.
-                        const float target_yaw_rate_dps =
-                            receiver_to_yaw_rate(yaw_us);
-
-                        // ----------------------------------------------------
-                        // Calculate PID corrections.
-                        // ----------------------------------------------------
-
-                        // Roll correction.
-                        const float roll_correction_us =
-                            roll_pid.update(
-                                target_roll_deg,
-                                attitude.roll_deg,
-                                delta_time_seconds);
-
-                        // Pitch correction.
-                        const float pitch_correction_us =
-                            pitch_pid.update(
-                                target_pitch_deg,
-                                attitude.pitch_deg,
-                                delta_time_seconds);
-
-                        // Yaw correction.
-                        //
-                        // Unlike roll and pitch, yaw uses the measured
-                        // angular velocity directly from the gyroscope.
-                        const float yaw_correction_us =
-                            yaw_pid.update(
-                                target_yaw_rate_dps,
-                                imu_sample.gyro.z_dps,
-                                delta_time_seconds);
-
-                        // ----------------------------------------------------
-                        // Calculate individual motor commands.
-                        // ----------------------------------------------------
-
-                        printf("throttle: %u\n", throttle_us);
-
-                        const MotorCommands motor_commands =
-                            mixer.mix(
-                                throttle_us,
-                                pitch_correction_us,
-                                roll_correction_us,
-                                yaw_correction_us);
-
-                        // ----------------------------------------------------
-                        // Apply motor commands.
-                        // ----------------------------------------------------
-
-                        if (throttle_us <= ARM_THROTTLE_MAX_US)
+                        if (flight_state == FlightState::ArmedIdle)
                         {
-                            roll_pid.reset();
-                            pitch_pid.reset();
-                            yaw_pid.reset();
-
-                            escs.write_all_min();
+                            escs.write_all_us(
+                                MOTOR_IDLE_US,
+                                MOTOR_IDLE_US,
+                                MOTOR_IDLE_US,
+                                MOTOR_IDLE_US);
                         }
-                        else
-                        {
+                        else if (flight_state == FlightState::ArmedActive)
+                        {                                               
+                            // Convert receiver inputs into target angles/rates.
+                            const float target_roll_deg =
+                                receiver_to_angle(
+                                    roll_us,
+                                    MAX_ROLL_ANGLE_DEG);
+
+                            const float target_pitch_deg =
+                                receiver_to_angle(
+                                    pitch_us,
+                                    MAX_PITCH_ANGLE_DEG);
+
+                            const float target_yaw_rate_dps =
+                                receiver_to_yaw_rate(yaw_us);
+
+                            // Calculate PID corrections.
+                            const float roll_correction_us =
+                                roll_pid.update(
+                                    target_roll_deg,
+                                    attitude.roll_deg,
+                                    delta_time_seconds);
+
+                            const float pitch_correction_us =
+                                pitch_pid.update(
+                                    target_pitch_deg,
+                                    attitude.pitch_deg,
+                                    delta_time_seconds);
+
+                            const float yaw_correction_us =
+                                yaw_pid.update(
+                                    target_yaw_rate_dps,
+                                    imu_sample.gyro.z_dps,
+                                    delta_time_seconds);
+
+                            // Calculate individual motor commands.
+                            const MotorCommands motor_commands =
+                                mixer.mix(
+                                    throttle_us,
+                                    pitch_correction_us,
+                                    roll_correction_us,
+                                    yaw_correction_us);
+
+                            // Apply the motor commands.
                             escs.write_all_us(
                                 motor_commands.front_left_us,
                                 motor_commands.front_right_us,
@@ -449,8 +451,8 @@ int main()
                     {
                         // An IMU communication failure causes
                         // the quadcopter to disarm.
-                        armed = false;
-
+                        flight_state = FlightState::Disarmed;
+                        
                         arm_start_time = nil_time;
                         disarm_start_time = nil_time;
 
