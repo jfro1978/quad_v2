@@ -42,7 +42,8 @@ namespace
 
     // Arming constants
     constexpr uint16_t ARM_THROTTLE_MAX_US = 1050;
-    constexpr uint16_t ACTIVE_THROTTLE_MIN_US = 1070;
+    constexpr uint16_t ACTIVE_THROTTLE_MIN_US = 1150;
+    constexpr uint16_t IDLE_THROTTLE_MAX_US = 1130;
     constexpr uint16_t ARM_YAW_RIGHT_MIN_US = 1900;
     constexpr uint16_t DISARM_YAW_LEFT_MAX_US = 1100;
     constexpr int64_t ARM_HOLD_TIME_US = 1'000'000;
@@ -51,15 +52,15 @@ namespace
     constexpr uint16_t YAW_DEADBAND_US = 10;
 
     constexpr PidController::Gains ROLL_PID_GAINS{
-        .proportional = 8.0f,
+        .proportional = 9.0f,
         .integral = 0.0f,
-        .derivative = 0.0f
+        .derivative = 0.05f
     };
 
     constexpr PidController::Gains PITCH_PID_GAINS{
-        .proportional = 8.0f,
+        .proportional = 9.0f,
         .integral = 0.0f,
-        .derivative = 0.0f
+        .derivative = 0.05f
     };
 
     constexpr PidController::Gains YAW_PID_GAINS{
@@ -297,7 +298,7 @@ int main()
                 printf("ARMED ACTIVE\n");
             }
             else if (flight_state == FlightState::ArmedActive &&
-                    throttle_us <= ARM_THROTTLE_MAX_US)
+                    throttle_us <= IDLE_THROTTLE_MAX_US)
             {
                 flight_state = FlightState::ArmedIdle;
 
