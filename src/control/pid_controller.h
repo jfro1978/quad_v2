@@ -39,7 +39,7 @@ private:
     float integral_max_;
 
     float integral_;
-    float previous_error_;
+    float previous_measurement_;
 
-    bool has_previous_error_;
+    bool has_previous_measurement_;
 };

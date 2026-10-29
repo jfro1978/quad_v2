@@ -1,9 +1,11 @@
 #include "mixer/motor_mixer.h"
 
 MotorMixer::MotorMixer(uint16_t minimum_us,
-                       uint16_t maximum_us)
+                       uint16_t maximum_us,
+                       uint16_t idle_us)
     : minimum_us_(minimum_us),
-      maximum_us_(maximum_us)
+      maximum_us_(maximum_us),
+      idle_us_(idle_us)
 {
 }
 
@@ -68,9 +70,9 @@ MotorCommands MotorMixer::mix(
 
 uint16_t MotorMixer::clamp_motor_command(float command_us) const
 {
-    if (command_us < static_cast<float>(minimum_us_))
+    if (command_us < static_cast<float>(idle_us_))
     {
-        return minimum_us_;
+        return idle_us_;
     }
 
     if (command_us > static_cast<float>(maximum_us_))

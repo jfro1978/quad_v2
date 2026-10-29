@@ -12,8 +12,8 @@ PidController::PidController(
       integral_min_(integral_min),
       integral_max_(integral_max),
       integral_(0.0f),
-      previous_error_(0.0f),
-      has_previous_error_(false)
+      previous_measurement_(0.0f),
+      has_previous_measurement_(false)
 {
 }
 
@@ -29,36 +29,79 @@ float PidController::update(
 
     const float error = setpoint - measurement;
 
+    // -------------------------------------------------
+    // Proportional term
+    // -------------------------------------------------
+
     const float proportional_term =
         gains_.proportional * error;
 
-    integral_ += error * delta_time_seconds;
-
-    integral_ = clamp(
-        integral_,
-        integral_min_,
-        integral_max_);
-
-    const float integral_term =
-        gains_.integral * integral_;
+    // -------------------------------------------------
+    // Derivative term
+    // -------------------------------------------------
 
     float derivative_term = 0.0f;
 
-    if (has_previous_error_)
+    if (has_previous_measurement_)
     {
-        const float error_rate =
-            (error - previous_error_) / delta_time_seconds;
+        const float measurement_rate =
+            (measurement - previous_measurement_) /
+            delta_time_seconds;
 
         derivative_term =
-            gains_.derivative * error_rate;
+            -gains_.derivative * measurement_rate;
     }
 
-    previous_error_ = error;
-    has_previous_error_ = true;
+    previous_measurement_ = measurement;
+    has_previous_measurement_ = true;
+
+    // -------------------------------------------------
+    // Integral term with anti-windup
+    // -------------------------------------------------
+
+    // Calculate what the integral accumulator would
+    // become if we accepted the current error.
+    const float candidate_integral = clamp(
+        integral_ + error * delta_time_seconds,
+        integral_min_,
+        integral_max_);
+
+
+
+    // Calculate the PID output using the proposed
+    // integral accumulator.
+    const float candidate_output =
+        proportional_term +
+        gains_.integral * candidate_integral +
+        derivative_term;
+
+    // Determine whether the output would be saturated.
+    const bool saturated_high =
+        candidate_output > output_max_;
+
+    const bool saturated_low =
+        candidate_output < output_min_;
+
+    // Only accept the new integral value if it would
+    // not drive the output further into saturation.
+    //
+    // Assumes a non-negative integral gain.
+    const bool allow_integration =
+        !(saturated_high && error > 0.0f) &&
+        !(saturated_low && error < 0.0f);
+
+    if (allow_integration)
+    {
+        integral_ = candidate_integral;
+    }
+
+    // -------------------------------------------------
+    // Calculate final PID output
+    // -------------------------------------------------
 
     const float output =
         proportional_term +
-        integral_term +
+        gains_.integral * integral_ +
         derivative_term;
 
     return clamp(
@@ -70,8 +113,8 @@ float PidController::update(
 void PidController::reset()
 {
     integral_ = 0.0f;
-    previous_error_ = 0.0f;
-    has_previous_error_ = false;
+    previous_measurement_ = 0.0f;
+    has_previous_measurement_ = false;
 }
 
 float PidController::clamp(

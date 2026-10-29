@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cmath>
 #include <algorithm>
 
 #include "pico/stdlib.h"
@@ -37,6 +38,7 @@ namespace
 
     constexpr uint16_t MOTOR_MIN_US = 1000;
     constexpr uint16_t MOTOR_MAX_US = 2000;
+    constexpr uint16_t MOTOR_IDLE_US = 1100;
 
     constexpr float TEST_PITCH_CORRECTION_US = 0.0f;
     constexpr float TEST_ROLL_CORRECTION_US  = 100.0f;
@@ -60,7 +62,7 @@ namespace
     };
 
     constexpr PidController::Gains PITCH_PID_GAINS{
-        .proportional = 2.0f,
+        .proportional = 8.0f,
         .integral = 0.0f,
         .derivative = 0.0f
     };
@@ -101,9 +103,33 @@ namespace
 
     float receiver_to_angle(uint16_t pulse_us, float max_angle_deg)
     {
+        constexpr float DEADBAND_US = 20.0f;
+
+        // Calculate the offset from the receiver's centre position.
+        float offset =
+            static_cast<float>(pulse_us) - RECEIVER_MID_US;
+
+        // Return zero if the receiver signal is within the deadband.
+        if (std::abs(offset) <= DEADBAND_US)
+        {
+            return 0.0f;
+        }
+
+        // Remove the deadband from the offset to ensure a
+        // continuous transition from zero to the target angle.
+        if (offset > 0.0f)
+        {
+            offset -= DEADBAND_US;
+        }
+        else
+        {
+            offset += DEADBAND_US;
+        }
+
+        // Normalise the adjusted offset to the range [-1, +1].
         const float normalised =
-            (static_cast<float>(pulse_us) - RECEIVER_MID_US) /
-            (RECEIVER_MAX_US - RECEIVER_MID_US);
+            offset /
+            (RECEIVER_MAX_US - RECEIVER_MID_US - DEADBAND_US);
 
         return std::clamp(normalised, -1.0f, 1.0f) * max_angle_deg;
     }
@@ -171,7 +197,7 @@ int main()
     printf("Apply LiPo battery power now.\n");
     sleep_ms(10000);
 
-    MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US);
+    MotorMixer mixer(MOTOR_MIN_US, MOTOR_MAX_US, MOTOR_IDLE_US);
 
     PidController roll_pid(
         ROLL_PID_GAINS,
@@ -232,6 +258,10 @@ int main()
             arm_start_time = nil_time;
             disarm_start_time = nil_time;
 
+            roll_pid.reset();
+            pitch_pid.reset();
+            yaw_pid.reset();
+
             escs.write_all_min();
         }
         else
@@ -269,6 +299,10 @@ int main()
                         armed = true;
                         arm_start_time = nil_time;
 
+                        roll_pid.reset();
+                        pitch_pid.reset();
+                        yaw_pid.reset();
+
                         printf("ARMED\n");
                     }
                 }
@@ -293,6 +327,10 @@ int main()
                     {
                         armed = false;
                         disarm_start_time = nil_time;
+
+                        roll_pid.reset();
+                        pitch_pid.reset();
+                        yaw_pid.reset();
 
                         escs.write_all_min();
 
@@ -377,6 +415,8 @@ int main()
                         // Calculate individual motor commands.
                         // ----------------------------------------------------
 
+                        printf("throttle: %u\n", throttle_us);
+
                         const MotorCommands motor_commands =
                             mixer.mix(
                                 throttle_us,
@@ -390,6 +430,10 @@ int main()
 
                         if (throttle_us <= ARM_THROTTLE_MAX_US)
                         {
+                            roll_pid.reset();
+                            pitch_pid.reset();
+                            yaw_pid.reset();
+
                             escs.write_all_min();
                         }
                         else

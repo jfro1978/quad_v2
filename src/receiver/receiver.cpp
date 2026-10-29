@@ -124,29 +124,26 @@ void Receiver::gpio_callback(uint gpio, uint32_t events)
 
 bool Receiver::channel_valid(uint8_t channel) const
 {
-    // Check whether the most recently received pulse was valid.
     if (!valid_[channel])
     {
         return false;
     }
 
-    // Read the timestamp of the last valid pulse.
     const uint32_t last_pulse_us =
         last_valid_pulse_us_[channel];
 
-    // No valid pulse has ever been received.
     if (last_pulse_us == 0)
     {
         return false;
     }
 
-    // Calculate how long ago the pulse was received.
     const uint32_t elapsed_us =
         time_us_32() - last_pulse_us;
 
-    // Check whether the signal has timed out.
     if (elapsed_us > SIGNAL_TIMEOUT_US)
     {
         return false;
     }
+
+    return true;
 }

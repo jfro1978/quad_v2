@@ -13,7 +13,8 @@ class MotorMixer
 {
     public:
         MotorMixer(uint16_t minimum_us,
-                   uint16_t maximum_us);
+                   uint16_t maximum_us,
+                   uint16_t idle_us);
 
                    MotorCommands mix(uint16_t throttle_us,
                       float pitch_correction_us,
@@ -25,4 +26,5 @@ private:
 
     uint16_t minimum_us_;
     uint16_t maximum_us_;
+    uint16_t idle_us_;
 };
